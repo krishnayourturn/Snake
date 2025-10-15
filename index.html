@@ -1,1 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ChatGPT Snake — Game</title>
+  <style>
+    /* Basic reset */
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html, body { height: 100%; background: #0b1221; color: #e6eef8; font-family: Inter, system-ui, sans-serif; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
 
+    /* Main layout */
+    .wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      min-height: 100vh;
+      justify-content: center;
+    }
+
+    /* Game area */
+    .game-frame {
+      position: relative;
+      width: min(720px, 96vw);
+      aspect-ratio: 1 / 1; /* square game area */
+      background: linear-gradient(180deg, #071024 0%, #0b1530 100%);
+      border-radius: 12px;
+      box-shadow: 0 8px 30px rgba(2,6,23,0.7), inset 0 1px 0 rgba(255,255,255,0.02);
+      overflow: hidden;
+    }
+
+    canvas#game {
+      width: 100%;
+      height: 100%;
+      display: block;
+      background: transparent; /* JS can draw background or we can supply an image */
+    }
+
+    /* HUD (score / info) */
+    .hud {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      right: 8px;
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      pointer-events: none; /* buttons below handle input */
+    }
+    .panel {
+      pointer-events: auto;
+      background: rgba(0,0,0,0.35);
+      padding: 6px 10px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 14px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    /* Controls container (on-screen touch buttons) */
+    .controls {
+      position: absolute;
+      bottom: 12px;
+      left: 12px;
+      display: grid;
+      grid-template-columns: 56px 56px 56px;
+      grid-template-rows: 56px 56px;
+      gap: 8px;
+      pointer-events: auto;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    /* D-pad style */
+    .btn {
+      width: 56px;
+      height: 56px;
+      border-radius: 10px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.04);
+      display: inline-grid;
+      place-items: center;
+      font-size: 20px;
+      color: #eaf2ff;
+      touch-action: none;
+    }
+    .btn:active { transform: scale(0.98); filter: brightness(0.95); }
+
+    /* Arrange arrows: empty, up, empty / left, down, right */
+    .c-empty { background: transparent; border: none; box-shadow: none; }
+    .controls .up    { grid-column: 2 / 3; grid-row: 1 / 2; }
+    .controls .left  { grid-column: 1 / 2; grid-row: 2 / 3; }
+    .controls .down  { grid-column: 2 / 3; grid-row: 2 / 3; }
+    .controls .right { grid-column: 3 / 3; grid-row: 2 / 3; }
+
+    /* Top-right control buttons (Start/Pause/Reset) */
+    .top-controls {
+      position: absolute;
+      bottom: 12px;
+      right: 12px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .small-btn {
+      padding: 8px 12px;
+      border-radius: 10px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.04);
+      font-weight: 700;
+      letter-spacing: .6px;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+
+    /* Informational footer */
+    .footer {
+      width: min(720px, 96vw);
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      color: #99a6bd;
+      font-size: 13px;
+      margin-top: 6px;
+    }
+
+    /* Make controls larger on larger screens */
+    @media (min-width: 600px) {
+      .controls { gap: 10px; grid-template-columns: 70px 70px 70px; grid-template-rows: 70px 70px; }
+      .btn { width: 70px; height: 70px; font-size: 24px; border-radius: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="game-frame" role="application" aria-label="Snake game area">
+      <div class="hud" aria-hidden="false">
+        <div class="panel" id="scorePanel">Score: <span id="score">0</span></div>
+        <div class="panel" id="infoPanel">Length: <span id="length">1</span></div>
+      </div>
+
+      <!-- The actual canvas where JS will draw the game -->
+      <canvas id="game" width="600" height="600"></canvas>
+
+      <!-- On-screen D-pad / touch controls -->
+      <div class="controls" aria-hidden="false" role="group" aria-label="On-screen controls">
+        <div class="c-empty"></div>
+        <button class="btn up" id="btnUp"
+                onmousedown="startMove('up')" onmouseup="stopMove()" onmouseleave="stopMove()"
+                ontouchstart="startMove('up')" ontouchend="stopMove()" aria-label="Move up">▲</button>
+
+        <div class="c-empty"></div>
+
+        <button class="btn left" id="btnLeft"
+                onmousedown="startMove('left')" onmouseup="stopMove()" onmouseleave="stopMove()"
+                ontouchstart="startMove('left')" ontouchend="stopMove()" aria-label="Move left">◀</button>
+
+        <button class="btn down" id="btnDown"
+                onmousedown="startMove('down')" onmouseup="stopMove()" onmouseleave="stopMove()"
+                ontouchstart="startMove('down')" ontouchend="stopMove()" aria-label="Move down">▼</button>
+
+        <button class="btn right" id="btnRight"
+                onmousedown="startMove('right')" onmouseup="stopMove()" onmouseleave="stopMove()"
+                ontouchstart="startMove('right')" ontouchend="stopMove()" aria-label="Move right">▶</button>
+      </div>
+
+      <!-- Start / Pause / Reset -->
+      <div class="top-controls" aria-hidden="false">
+        <button id="startBtn" class="small-btn" onclick="toggleStartPause()">Start</button>
+        <button id="resetBtn" class="small-btn" onclick="resetGame()">Reset</button>
+      </div>
+    </div>
+
+    <div class="footer">
+      <div>Use on-screen buttons or arrow keys / WASD.</div>
+      <div>Wrap-around edges enabled — go off one edge and come back from the opposite side.</div>
+    </div>
+  </div>
+
+  <!-- Placeholder: game script to be added separately as script.js or inline later -->
+  <!-- The JS should define: startMove(dir), stopMove(), toggleStartPause(), resetGame() and handle rendering, food, growth, wrap-around, self-collision -->
+</body>
+</html>
